@@ -20,7 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static com.javarush.jira.bugtracking.ObjectType.TASK;
 import static com.javarush.jira.bugtracking.task.TaskUtil.fillExtraFields;
@@ -85,7 +87,7 @@ public class TaskService {
             activityHandler.create(makeActivity(id, taskTo));
         }
     }
-
+    @Transactional(readOnly = true)
     public TaskToFull get(long id) {
         Task task = Util.checkExist(id, handler.getRepository().findFullById(id));
         TaskToFull taskToFull = fullMapper.toTo(task);
@@ -140,4 +142,39 @@ public class TaskService {
             throw new DataConflictException(String.format(assign ? CANNOT_ASSIGN : CANNOT_UN_ASSIGN, userType, task.getStatusCode()));
         }
     }
+    @Transactional
+    public TaskToExt addTag(long taskId, Set<String> newTags){
+        Task task = handler.getRepository().getExisted(taskId);
+        Set<String> currentTags = task.getTags();
+        if(currentTags == null){
+            currentTags = new HashSet<>();
+        }
+        boolean changed = currentTags.addAll(newTags);
+        task.setTags(currentTags);
+        if(changed){
+            handler.getRepository().save(task);
+            Activity tagsAddActivity = new Activity(null, taskId, AuthUser.authId());
+            tagsAddActivity.setComment("Added tags " + String.join(", ", newTags));
+            activityHandler.create(tagsAddActivity);
+        }
+        return extMapper.toTo(task);
+    }
+
+    @Transactional
+    public TaskToExt removeTags(long taskId, Set<String> toDeleteTags){
+        Task task = handler.getRepository().getExisted(taskId);
+        Set<String> currentTags = task.getTags();
+        if(currentTags != null && toDeleteTags != null){
+            boolean changed = currentTags.removeAll(toDeleteTags);
+            task.setTags(currentTags);
+            if(changed){
+                handler.getRepository().save(task);
+                Activity tagsRemoveActivity = new Activity(null, taskId, AuthUser.authId());
+                tagsRemoveActivity.setComment("Deleted tags " + String.join(", ", toDeleteTags));
+                activityHandler.create(tagsRemoveActivity);
+            }
+        }
+        return extMapper.toTo(task);
+    }
+
 }
